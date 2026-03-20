@@ -7,11 +7,20 @@ public class UI_LevelModel : MonoBehaviour, IMouseClickHandler
     public float hoverScale = 1.1f;
     public float speed = 8f;
 
+    [SerializeField] private TMPro.TextMeshProUGUI scoreText;
+    [SerializeField] private TMPro.TextMeshProUGUI progressText;
+
     bool hovering = false;
 
     void Start()
     {
         originalScale = transform.localScale;
+
+        int bestScore = PlayerPrefs.GetInt("Score", 0);
+        float bestProgress = PlayerPrefs.GetFloat("Progress", 0f);
+
+        scoreText.text = $"{bestScore}/10";
+        progressText.text = $"{bestProgress}%";
     }
 
     void Update()
@@ -34,5 +43,13 @@ public class UI_LevelModel : MonoBehaviour, IMouseClickHandler
     public void OnMouseExit()
     {
         hovering = false;
+    }
+
+    [ContextMenu("Clear History")]
+    public void ClearHistory()
+    {
+        PlayerPrefs.DeleteAll();
+        scoreText.text = $"0/10";
+        progressText.text = $"0%";
     }
 }

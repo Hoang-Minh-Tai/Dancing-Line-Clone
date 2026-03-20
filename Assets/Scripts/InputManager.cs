@@ -12,9 +12,9 @@ public class InputManager : MonoBehaviour
     private Camera mainCamera;
 
     // Hover detection variables
-    private GameObject currentHovered = null;    
-    [SerializeField] private LayerMask hoverLayerMask; 
-    [SerializeField] private float hoverCheckInterval = 0.05f; 
+    private GameObject currentHovered = null;
+    [SerializeField] private LayerMask hoverLayerMask;
+    [SerializeField] private float hoverCheckInterval = 0.05f;
     private float hoverTimer = 0f;
 
     private void Awake()
@@ -29,6 +29,7 @@ public class InputManager : MonoBehaviour
 
         input = new InputSystem_Actions();
         input.Player.Enable();
+        input.UI.Enable();
         mainCamera = Camera.main;
     }
 
@@ -75,14 +76,14 @@ public class InputManager : MonoBehaviour
             if (newHovered != currentHovered)
             {
                 // Exit previous
-                if (currentHovered != null && 
+                if (currentHovered != null &&
                     currentHovered.TryGetComponent<IMouseClickHandler>(out var prev))
                 {
                     prev.OnMouseExit();
                 }
 
                 // Enter new
-                if (newHovered != null && 
+                if (newHovered != null &&
                     newHovered.TryGetComponent<IMouseClickHandler>(out var next))
                 {
                     next.OnMouseEnter();

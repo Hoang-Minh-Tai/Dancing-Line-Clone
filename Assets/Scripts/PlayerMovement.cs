@@ -1,19 +1,22 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.Pool;
 
 [RequireComponent(typeof(Rigidbody))]
-public class Player : MonoBehaviour
+public class PlayerMovement : MonoBehaviour
 {
     [SerializeField] private GameObject segmentPrefab;
-    [SerializeField] private bool destroyTail;
+    [SerializeField] private Transform meshObject;
+    private bool destroyTail;
     private ObjectPool<GameObject> segmentPool;
+    private List<GameObject> activeSegments = new List<GameObject>();
 
     [Header("Movement")]
     public float speed = 5f;
     public float segmentSpacing = 0.5f;
-    public Vector3 direction = Vector3.forward;
-
+    private Vector3 direction = Vector3.back;
     [Header("Ground Check")]
     [SerializeField] private float groundCheckDistance = 0.6f;
     [SerializeField] private float groundThickness = 0.1f;     // thin slice downward
@@ -31,13 +34,19 @@ public class Player : MonoBehaviour
     private Vector3 velocity;           // y-component only used for gravity
     public bool isGrounded;
     public bool enableMoving { get; set; }
+    public bool enableInput { get; set; }
     private Rigidbody rb;
+
 
     private void Awake()
     {
         segmentPool = new ObjectPool<GameObject>(
             createFunc: () => Instantiate(segmentPrefab),
-            actionOnGet: obj => obj.SetActive(true),
+            actionOnGet: obj =>
+            {
+                obj.SetActive(true);
+                activeSegments.Add(obj);
+            },
             actionOnRelease: obj => obj.SetActive(false),
             actionOnDestroy: obj => Destroy(obj),
             collectionCheck: true,
@@ -49,11 +58,6 @@ public class Player : MonoBehaviour
     private void Start()
     {
         rb = GetComponent<Rigidbody>();
-        enableMoving = false;
-        rb.isKinematic = true;
-        rb.useGravity = false;
-
-        lastSegmentPosition = transform.position;
 
         // Auto-create ground check transform if missing
         if (groundCheck == null)
@@ -63,6 +67,8 @@ public class Player : MonoBehaviour
             obj.transform.localPosition = Vector3.down * 0.5f;
             groundCheck = obj.transform;
         }
+
+        Reset();
     }
 
 
@@ -70,7 +76,7 @@ public class Player : MonoBehaviour
     {
         if (!enableMoving) return;
 
-        if (InputManager.Instance.ConsumeTap())
+        if (enableInput && InputManager.Instance.ConsumeTap())
         {
             Turn();
         }
@@ -79,10 +85,35 @@ public class Player : MonoBehaviour
         Move();
         if (CheckWall())
         {
-            enableMoving = false;
+            Die();
             return;
         }
         HandleSegmentSpawn();
+    }
+
+
+    public void Reset()
+    {
+        enableMoving = false;
+        rb.isKinematic = true;
+        rb.useGravity = false;
+        destroyTail = true;
+        turnLeft = false;
+        direction = Vector3.back;
+        meshObject.rotation = Quaternion.LookRotation(direction, Vector3.up);
+
+        lastSegmentPosition = transform.position;
+        for (int i = activeSegments.Count - 1; i >= 0; i--)
+        {
+            try
+            {
+                segmentPool.Release(activeSegments[i]);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Error occurred while releasing segment: {e.Message}");
+            }
+        }
     }
 
     private void CheckGrounded()
@@ -148,6 +179,14 @@ public class Player : MonoBehaviour
         }
     }
 
+    private void Die()
+    {
+        enableMoving = false;
+        StopAllCoroutines();
+        destroyTail = false;
+        GameEventManager.Instance.generalEvent.PlayerDied();
+    }
+
     private void Move()
     {
         if (!enableMoving) return;
@@ -182,7 +221,7 @@ public class Player : MonoBehaviour
     private void SpawnSegment()
     {
         GameObject segment = segmentPool.Get();
-        segment.transform.SetPositionAndRotation(transform.position, transform.rotation);
+        segment.transform.SetPositionAndRotation(transform.position, meshObject.rotation);
         if (destroyTail)
         {
             StartCoroutine(ReturnSegmentToPool(segment));
@@ -192,15 +231,16 @@ public class Player : MonoBehaviour
     private IEnumerator ReturnSegmentToPool(GameObject segment)
     {
         yield return new WaitForSeconds(5f);
-        segmentPool.Release(segment);
+        if (destroyTail) segmentPool.Release(segment);
     }
 
     void OnCollisionEnter(Collision collision)
     {
         if (collision.gameObject.CompareTag("Dead"))
         {
-            enableMoving = false;
             StopCoroutine(ReturnSegmentToPool(null)); // Stop all segment return coroutines
+            Die();
+            Debug.Log("Player collided with deadly object. Game Over.");
         }
     }
 
@@ -211,7 +251,11 @@ public class Player : MonoBehaviour
             // Turn 45 degrees
             float angle = turnLeft ? 45f : -45f;
             direction = Quaternion.Euler(0, angle, 0) * direction;
-            transform.rotation = Quaternion.LookRotation(direction, Vector3.up);
+            meshObject.rotation = Quaternion.LookRotation(direction, Vector3.up);
+
+            StopAllCoroutines();
+            destroyTail = false;
+            GameEventManager.Instance.generalEvent.PassGate();
             Debug.Log("Passed through gate, new direction: " + direction);
         }
     }
@@ -220,7 +264,7 @@ public class Player : MonoBehaviour
     {
         // Movement direction
         Gizmos.color = Color.red;
-        Gizmos.DrawRay(transform.position, direction.normalized * 2f);
+        Gizmos.DrawRay(transform.position, transform.TransformDirection(direction).normalized * 2f);
 
         if (groundCheck == null) return;
 
